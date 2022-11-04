@@ -1,4 +1,5 @@
 use aws_config::meta::region::RegionProviderChain;
+use aws_sdk_autoscaling::model::RefreshPreferences;
 use aws_sdk_autoscaling::{Client, Error};
 use clap::Parser;
 
@@ -12,6 +13,9 @@ struct Cli {
 
     #[arg(long, value_name = "NEW_LAUNCH_CONFIGURATION_NAME", required = true)]
     new_launch_configuration_name: Option<String>,
+
+    #[arg(long)]
+    instance_refresh: bool,
 }
 
 #[tokio::main]
@@ -72,12 +76,40 @@ async fn main() -> Result<(), Error> {
 
     let r = client
         .update_auto_scaling_group()
-        .set_auto_scaling_group_name(cli.name)
+        .set_auto_scaling_group_name(cli.name.clone())
         .set_launch_configuration_name(cli.new_launch_configuration_name)
         .send()
         .await?;
 
     println!("{:?}", r);
+
+    if cli.instance_refresh {
+        let r = client
+            .start_instance_refresh()
+            .set_auto_scaling_group_name(cli.name.clone())
+            .preferences(
+                RefreshPreferences::builder()
+                    .checkpoint_percentages(50)
+
+                    .checkpoint_percentages(100)
+
+                    .min_healthy_percentage(80)
+                    .build(),
+            )
+            .send()
+            .await?;
+
+        println!("{:?}", r);
+
+        let r = client
+            .describe_instance_refreshes()
+            .set_auto_scaling_group_name(cli.name)
+            .instance_refresh_ids(r.instance_refresh_id.unwrap())
+            .send()
+            .await?;
+
+        println!("{:?}", r);
+    }
 
     Ok(())
 }
